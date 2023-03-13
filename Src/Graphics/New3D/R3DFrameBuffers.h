@@ -29,6 +29,21 @@ public:
 
 private:
 
+	struct FBVertex
+	{
+		void Set(float x, float y, float s, float t)
+		{
+			texCoords[0] = s;
+			texCoords[1] = t;
+			verts[0] = x;
+			verts[1] = y;
+			verts[2] = 0.f;	// z = 0
+		}
+
+		float texCoords[2];
+		float verts[3];
+	};
+
 	bool	CreateFBODepthCopy(int width, int height);
 	GLuint	CreateTexture(int width, int height);
 	void	AllocShaderTrans();
@@ -52,8 +67,8 @@ private:
 	GLSLShader m_shaderTrans;
 	GLSLShader m_shaderWipe;
 
-	// vao
-	GLuint m_vao;	// this really needed if we don't actually use vertex attribs?
+	// vertices for fbo
+	VBO m_vbo;
 };
 
 }

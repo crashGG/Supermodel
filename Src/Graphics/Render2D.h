@@ -30,7 +30,6 @@
 
 #include <GL/glew.h>
 #include "Util/NewConfig.h"
-#include "New3D/GLSLShader.h"
 
 
 /*
@@ -196,8 +195,11 @@ private:
   unsigned  m_totalYPixels;
   unsigned  m_correction = 0;
   
-  GLuint m_vao;
-  GLSLShader m_shader;
+  // Shader programs and input data locations
+  GLuint m_shaderProgram;   // shader program object
+  GLuint m_vertexShader;    // vertex shader handle
+  GLuint m_fragmentShader;  // fragment shader
+  GLuint m_textureMapLoc;   // location of "textureMap" uniform
 
   // PreRenderFrame() tracks which surfaces exist in current frame
   std::pair<bool, bool> m_surfaces_present = std::pair<bool, bool>(false, false);

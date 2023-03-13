@@ -3,7 +3,7 @@
 
 static const char *vertexShaderR3D = R"glsl(
 
-#version 410 core
+#version 120
 
 // uniforms
 uniform float	modelScale;
@@ -12,20 +12,20 @@ uniform mat4	projMat;
 uniform bool	translatorMap;
 
 // attributes
-in	vec4	inVertex;
-in  vec3	inNormal;
-in  vec2	inTexCoord;
-in  vec4	inColour;
-in  vec3	inFaceNormal;		// used to emulate r3d culling 
-in  float	inFixedShade;
+attribute vec4	inVertex;
+attribute vec3	inNormal;
+attribute vec2	inTexCoord;
+attribute vec4	inColour;
+attribute vec3	inFaceNormal;		// used to emulate r3d culling 
+attribute float	inFixedShade;
 
 // outputs to fragment shader
-out vec3	fsViewVertex;
-out vec3	fsViewNormal;		// per vertex normal vector
-out vec2	fsTexCoord;
-out vec4	fsColor;
-out float	fsDiscard;			// can't have varying bool (glsl spec)
-out float	fsFixedShade;
+varying vec3	fsViewVertex;
+varying vec3	fsViewNormal;		// per vertex normal vector
+varying vec2	fsTexCoord;
+varying vec4	fsColor;
+varying float	fsDiscard;			// can't have varying bool (glsl spec)
+varying float	fsFixedShade;
 
 vec4 GetColour(vec4 colour)
 {
@@ -61,17 +61,17 @@ void main(void)
 
 static const char *fragmentShaderR3D = R"glsl(
 
-#version 410 core
+#version 120
+#extension GL_ARB_shader_texture_lod : require
 
-uniform usampler2D tex1;			// entire texture sheet
+uniform sampler2D tex1;			// base tex
+uniform sampler2D tex2;			// micro tex (optional)
 
 // texturing
 uniform bool	textureEnabled;
 uniform bool	microTexture;
 uniform float	microTextureScale;
-uniform int		microTextureID;
-uniform ivec4	baseTexInfo;		// x/y are x,y positions in the texture sheet. z/w are with and height
-uniform int		baseTexType;
+uniform vec2	baseTexSize;
 uniform bool	textureInverted;
 uniform bool	textureAlpha;
 uniform bool	alphaTest;
@@ -100,6 +100,7 @@ uniform bool	fixedShading;
 uniform int		hardwareStep;
 
 //interpolated inputs from vertex shader
+<<<<<<< HEAD
 in	vec3	fsViewVertex;
 in  vec3	fsViewNormal;		// per vertex normal vector
 in  vec4	fsColor;
@@ -249,6 +250,14 @@ ivec2 WrapTexCoords(ivec2 pos, ivec2 coordinate)
 
 	return newCoord;
 }
+=======
+varying vec3	fsViewVertex;
+varying vec3	fsViewNormal;		// per vertex normal vector
+varying vec4	fsColor;
+varying vec2	fsTexCoord;
+varying float	fsDiscard;
+varying float	fsFixedShade;
+>>>>>>> parent of 40c8259 (Rewrite the whole project for GL4+. I figured if we removed the limitation of a legacy rendering API we could improve things a bit. With GL4+ we can do unsigned integer math in the shaders. This allows us to upload a direct copy of the real3d texture sheet, and texture directly from this memory given the x/y pos and type. This massively simplifies the binding and invalidation code. Also the crazy corner cases will work because it essentially works the same way as the original hardware.)
 
 float mip_map_level(in vec2 texture_coordinate) // in texel units
 {
@@ -306,16 +315,16 @@ float LinearTexLocations(int wrapMode, float size, float u, out float u0, out fl
 	}
 }
 
-vec4 texBiLinear(usampler2D texSampler, ivec2 wrapMode, vec2 texSize, ivec2 texPos, vec2 texCoord)
+vec4 texBiLinear(sampler2D texSampler, float level, ivec2 wrapMode, vec2 texSize, vec2 texCoord)
 {
 	float tx[2], ty[2];
 	float a = LinearTexLocations(wrapMode.s, texSize.x, texCoord.x, tx[0], tx[1]);
 	float b = LinearTexLocations(wrapMode.t, texSize.y, texCoord.y, ty[0], ty[1]);
-
-	vec4 p0q0 = ExtractColour(baseTexType,texelFetch(texSampler, WrapTexCoords(texPos,ivec2(vec2(tx[0],ty[0]) * texSize + texPos)), 0).r);
-    vec4 p1q0 = ExtractColour(baseTexType,texelFetch(texSampler, WrapTexCoords(texPos,ivec2(vec2(tx[1],ty[0]) * texSize + texPos)), 0).r);
-    vec4 p0q1 = ExtractColour(baseTexType,texelFetch(texSampler, WrapTexCoords(texPos,ivec2(vec2(tx[0],ty[1]) * texSize + texPos)), 0).r);
-    vec4 p1q1 = ExtractColour(baseTexType,texelFetch(texSampler, WrapTexCoords(texPos,ivec2(vec2(tx[1],ty[1]) * texSize + texPos)), 0).r);
+	
+	vec4 p0q0 = texture2DLod(texSampler, vec2(tx[0],ty[0]), level);
+    vec4 p1q0 = texture2DLod(texSampler, vec2(tx[1],ty[0]), level);
+    vec4 p0q1 = texture2DLod(texSampler, vec2(tx[0],ty[1]), level);
+    vec4 p1q1 = texture2DLod(texSampler, vec2(tx[1],ty[1]), level);
 
 	if(alphaTest) {
 		if(p0q0.a > p1q0.a)		{ p1q0.rgb = p0q0.rgb; }
@@ -338,44 +347,36 @@ vec4 texBiLinear(usampler2D texSampler, ivec2 wrapMode, vec2 texSize, ivec2 texP
     return mix( pInterp_q0, pInterp_q1, b ); // Interpolate in Y direction.
 }
 
-vec4 textureR3D(usampler2D texSampler, ivec2 wrapMode, ivec2 texSize, ivec2 texPos, vec2 texCoord)
+vec4 textureR3D(sampler2D texSampler, ivec2 wrapMode, vec2 texSize, vec2 texCoord)
 {
-	float numLevels	= floor(log2(min(float(texSize.x), float(texSize.y))));				// r3d only generates down to 1:1 for square textures, otherwise its the min dimension
-	float fLevel	= min(mip_map_level(texCoord * vec2(texSize)), numLevels);
+	float numLevels = floor(log2(min(texSize.x, texSize.y)));				// r3d only generates down to 1:1 for square textures, otherwise its the min dimension
+	float fLevel	= min(mip_map_level(texCoord * texSize), numLevels);
 
 	if(alphaTest) fLevel *= 0.5;
 	else fLevel *= 0.8;
 
-	int iLevel = int(fLevel);
+	float iLevel = floor(fLevel);						// value as an 'int'
 
-	ivec2 texPos0 = GetTexturePosition(iLevel,texPos);
-	ivec2 texPos1 = GetTexturePosition(iLevel+1,texPos);
+	vec2 texSize0 = texSize / pow(2, iLevel);
+	vec2 texSize1 = texSize / pow(2, iLevel+1.0);
 
-	ivec2 texSize0 = GetTextureSize(iLevel, texSize);
-	ivec2 texSize1 = GetTextureSize(iLevel+1, texSize); 
-
-	vec4 texLevel0 = texBiLinear(texSampler, wrapMode, vec2(texSize0), texPos0, texCoord);
-	vec4 texLevel1 = texBiLinear(texSampler, wrapMode, vec2(texSize1), texPos1, texCoord);
+	vec4 texLevel0 = texBiLinear(texSampler, iLevel, wrapMode, texSize0, texCoord);
+	vec4 texLevel1 = texBiLinear(texSampler, iLevel+1.0, wrapMode, texSize1, texCoord);
 
 	return mix(texLevel0, texLevel1, fract(fLevel));	// linear blend between our mipmap levels
 }
 
 vec4 GetTextureValue()
 {
-	vec4 tex1Data = textureR3D(tex1, textureWrapMode, ivec2(baseTexInfo.zw), ivec2(baseTexInfo.xy), fsTexCoord);
+	vec4 tex1Data = textureR3D(tex1, textureWrapMode, baseTexSize, fsTexCoord);
 
 	if(textureInverted) {
 		tex1Data.rgb = vec3(1.0) - vec3(tex1Data.rgb);
 	}
 
 	if (microTexture) {
-		vec2 scale			= (vec2(baseTexInfo.zw) / 128.0) * microTextureScale;
-		ivec2 pos			= GetMicroTexturePos(microTextureID);
-
-		// add page offset to microtexture position
-		pos.y				+= GetNextPageOffset(baseTexInfo.y);
-	
-		vec4 tex2Data		= textureR3D(tex1, ivec2(0), ivec2(128), pos, fsTexCoord * scale);
+		vec2 scale			= (baseTexSize / 128.0) * microTextureScale;
+		vec4 tex2Data		= textureR3D( tex2, ivec2(0), vec2(128.0), fsTexCoord * scale);
 
 		float lod			= mip_map_level(fsTexCoord * scale * vec2(128.0));
 
@@ -572,7 +573,7 @@ void main()
 	 // Fog & spotlight applied
 	finalData.rgb = mix(finalData.rgb, fogData.rgb + lSpotFogColor, fogData.a);
 
-	outColor = finalData;
+	gl_FragColor = finalData;
 }
 )glsl";
 

@@ -380,6 +380,12 @@
     <ClCompile Include="..\Src\Graphics\New3D\R3DShader.cpp">
       <Filter>Source Files\Graphics\New</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\Graphics\New3D\Texture.cpp">
+      <Filter>Source Files\Graphics\New</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Graphics\New3D\TextureSheet.cpp">
+      <Filter>Source Files\Graphics\New</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\Graphics\New3D\VBO.cpp">
       <Filter>Source Files\Graphics\New</Filter>
     </ClCompile>
@@ -830,6 +836,12 @@
       <Filter>Header Files\Graphics\New</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Graphics\New3D\R3DShaderTriangles.h">
+      <Filter>Header Files\Graphics\New</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Graphics\New3D\Texture.h">
+      <Filter>Header Files\Graphics\New</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Graphics\New3D\TextureSheet.h">
       <Filter>Header Files\Graphics\New</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Graphics\New3D\VBO.h">
